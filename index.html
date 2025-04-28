@@ -1,77 +1,139 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <title>9-Box Matrix</title>
+import { useState } from "react";
 
-  <!-- Tailwind (CDN) pour le style -->
-  <script src="https://cdn.tailwindcss.com"></script>
+/**
+ * Nine‑Box Matrix visualiser
+ * ---------------------------------------------------------
+ * Paste any of these structures into the textbox:
+ *  1) 3×3 grid copied from Excel (with or without the row/col headers)
+ *  2) Tab‑delimited list of individual projects in « Benefit<TAB>Feas<TAB>Title » form
+ *
+ * If a cell contains multiple projects separated by commas, semicolons or line‑breaks,
+ * the component splits them automatically so each one appears on its own line.
+ */
 
-  <!-- React + ReactDOM + Babel (CDN) -->
-  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-</head>
-<body class="bg-gray-50">
+// ---- Helpers -------------------------------------------------------------
 
-  <!-- Ici s’affiche l’app -->
-  <div id="root"></div>
-
-  <!-- Composant ➜ script « text/babel » -->
-  <script type="text/babel">
-
-/** -------- NineBoxMatrix.jsx  -------- */
-function parseMatrixFromGrid(raw) {
-  const rows = raw.trim().split(/\\r?\\n/).map(r => r.split(/\\t|\\s{2,}/).filter(Boolean));
+/** Convert a 3×3 grid pasted from Excel into a [][] array of strings. */
+function parseMatrixFromGrid(raw: string): string[][] | null {
+  const rows = raw
+    .trim()
+    .split(/\r?\n/)
+    .map((r) => r.split(/\t|\s{2,}/).filter(Boolean));
+  if (rows.length < 3) return null;
+  // Remove header row/col if present (detect the word "Benefits" or "High" in top‑left)
   if (/benefits/i.test(rows[0][0]) || rows[0][0] === "") rows.shift();
-  if (rows[0].length === 4) rows.forEach(r => r.shift());
-  const safe = Array.from({length:3}, (_,i)=>Array.from({length:3},(_,j)=>rows[i]?.[j]||""));
-  return safe;
+  if (rows[0].length === 4) rows.forEach((r) => r.shift());
+  const safeRows = Array.from({ length: 3 }, (_, i) =>
+    Array.from({ length: 3 }, (_, j) => rows[i]?.[j] ?? "")
+  );
+  return safeRows;
 }
-function parseMatrixFromList(raw) {
-  const out = Array.from({length:3},()=>Array(3).fill(""));
-  const bIdx = {High:0,Medium:1,Low:2};
-  const fIdx = {Low:0,Medium:1,High:2};
-  raw.trim().split(/\\r?\\n/).forEach(l=>{
-    const [b,f,...rest]=l.split(/\\t|\\s{2,}/);
-    const title=rest.join(" ").trim();
-    if(bIdx[b]!==undefined&&fIdx[f]!==undefined&&title){
-      const cur=out[bIdx[b]][fIdx[f]];
-      out[bIdx[b]][fIdx[f]]=cur?cur+"\\n"+title:title;
-    }
-  });
+
+/** Convert a line‑based list (Benefit\tFeas\tTitle) into a 3×3 matrix of titles. */
+function parseMatrixFromList(raw: string): string[][] {
+  const out = Array.from({ length: 3 }, () => Array(3).fill(""));
+  const benefitIdx = { High: 0, Medium: 1, Low: 2 } as const;
+  const feasIdx = { Low: 0, Medium: 1, High: 2 } as const;
+  raw
+    .trim()
+    .split(/\r?\n/)
+    .forEach((line) => {
+      const [b, f, ...rest] = line.split(/\t|\s{2,}/);
+      const title = rest.join(" ").trim();
+      if (benefitIdx[b] !== undefined && feasIdx[f] !== undefined && title) {
+        const current = out[benefitIdx[b]][feasIdx[f]];
+        out[benefitIdx[b]][feasIdx[f]] = current
+          ? `${current}\n${title}`
+          : title;
+      }
+    });
   return out;
 }
-function NineBoxMatrix() {
-  const {useState}=React;
-  const [matrix,setMatrix]=useState([["","",""],["","",""],["","",""]]);
-  const splitMulti=mat=>mat.map(r=>r.map(c=>c.split(/[,;\\n]+/).map(s=>s.trim()).filter(Boolean).join("\\n")));
-  const handlePaste=e=>{
-    const txt=e.clipboardData.getData("text/plain");
-    const grid=parseMatrixFromGrid(txt);
-    setMatrix(grid?splitMulti(grid):splitMulti(parseMatrixFromList(txt)));
+
+// ---- Component -----------------------------------------------------------
+
+export default function NineBoxMatrix() {
+  const [matrix, setMatrix] = useState<string[][]>([
+    ["", "", ""],
+    ["", "", ""],
+    ["", "", ""],
+  ]);
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const txt = e.clipboardData.getData("text/plain");
+    // 1) Try grid mode
+    const grid = parseMatrixFromGrid(txt);
+    if (grid) {
+      setMatrix(splitMulti(grid));
+      e.preventDefault();
+      return;
+    }
+    // 2) Fallback to list mode
+    setMatrix(splitMulti(parseMatrixFromList(txt)));
     e.preventDefault();
   };
-  const bg=(r,c)=>{const s=(3-r)+(c+1);return s>=6?"bg-green-200":s>=4?"bg-yellow-200":"bg-red-200";}
-  const rows=["High","Medium","Low"], cols=["Low","Medium","High"];
+
+  // Split commas / semicolons / CR into real line‑breaks inside each cell
+  const splitMulti = (mat: string[][]) =>
+    mat.map((row) =>
+      row.map((cell) =>
+        cell
+          .split(/[,;\n]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .join("\n")
+      )
+    );
+
+  const rowLabels = ["High", "Medium", "Low"];
+  const colLabels = ["Low", "Medium", "High"];
+
+  const bgClass = (r: number, c: number) => {
+    const score = (3 - r) + (c + 1); // green if 6 / 5, yellow 4, red 3 / 2
+    if (score >= 6) return "bg-green-200";
+    if (score >= 4) return "bg-yellow-200";
+    return "bg-red-200";
+  };
+
   return (
     <div className="p-4 max-w-2xl mx-auto">
       <h1 className="text-xl font-bold mb-2">9-Box Matrix</h1>
-      <p className="text-sm mb-4">Collez la grille Excel ou “Benefit ⇥ Feas ⇥ Titre”.</p>
-      <textarea onPaste={handlePaste} placeholder="Coller ici…" className="w-full h-28 p-2 border rounded mb-6"/>
+      <p className="text-sm mb-4">
+        Collez soit la grille 3×3 depuis Excel, soit une liste tabulée
+        &nbsp;«&nbsp;Benefit&nbsp;⇥&nbsp;Feas&nbsp;⇥&nbsp;Titre&nbsp;».
+      </p>
+      <textarea
+        onPaste={handlePaste}
+        placeholder="Coller ici…"
+        className="w-full h-28 p-2 border rounded mb-6"
+      />
+
       <div className="grid grid-cols-4 gap-px text-sm">
         <div></div>
-        {cols.map(c=><div key={c} className="text-center font-semibold">{c}</div>)}
-        {rows.map((r,rIdx)=><React.Fragment key={r}>
-          <div className="flex items-center justify-center font-semibold">{r}</div>
-          {cols.map((_,cIdx)=><div key={cIdx} className={`${bg(rIdx,cIdx)} min-h-[70px] whitespace-pre-wrap p-2 border`}>{matrix[rIdx][cIdx]}</div>)}
-        </React.Fragment>)}
+        {colLabels.map((c) => (
+          <div key={c} className="text-center font-semibold">
+            {c}
+          </div>
+        ))}
+        {rowLabels.map((rLbl, rIdx) => (
+          <>
+            <div key={rLbl} className="flex items-center justify-center font-semibold">
+              {rLbl}
+            </div>
+            {colLabels.map((_, cIdx) => (
+              <div
+                key={`${rIdx}-${cIdx}`}
+                className={`${bgClass(
+                  rIdx,
+                  cIdx
+                )} min-h-[70px] whitespace-pre-wrap p-2 border`}
+              >
+                {matrix[rIdx][cIdx]}
+              </div>
+            ))}
+          </>
+        ))}
       </div>
     </div>
   );
 }
-ReactDOM.createRoot(document.getElementById('root')).render(<NineBoxMatrix/>);
-
-  </script>
-</body>
-</html>
