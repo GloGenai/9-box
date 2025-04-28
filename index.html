@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>9-Box Matrix</title>
+
+  <!-- Tailwind (CDN) pour le style -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React + ReactDOM + Babel (CDN) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-50">
+
+  <!-- Ici s’affiche l’app -->
+  <div id="root"></div>
+
+  <!-- Composant ➜ script « text/babel » -->
+  <script type="text/babel">
+
+/** -------- NineBoxMatrix.jsx  -------- */
+function parseMatrixFromGrid(raw) {
+  const rows = raw.trim().split(/\\r?\\n/).map(r => r.split(/\\t|\\s{2,}/).filter(Boolean));
+  if (/benefits/i.test(rows[0][0]) || rows[0][0] === "") rows.shift();
+  if (rows[0].length === 4) rows.forEach(r => r.shift());
+  const safe = Array.from({length:3}, (_,i)=>Array.from({length:3},(_,j)=>rows[i]?.[j]||""));
+  return safe;
+}
+function parseMatrixFromList(raw) {
+  const out = Array.from({length:3},()=>Array(3).fill(""));
+  const bIdx = {High:0,Medium:1,Low:2};
+  const fIdx = {Low:0,Medium:1,High:2};
+  raw.trim().split(/\\r?\\n/).forEach(l=>{
+    const [b,f,...rest]=l.split(/\\t|\\s{2,}/);
+    const title=rest.join(" ").trim();
+    if(bIdx[b]!==undefined&&fIdx[f]!==undefined&&title){
+      const cur=out[bIdx[b]][fIdx[f]];
+      out[bIdx[b]][fIdx[f]]=cur?cur+"\\n"+title:title;
+    }
+  });
+  return out;
+}
+function NineBoxMatrix() {
+  const {useState}=React;
+  const [matrix,setMatrix]=useState([["","",""],["","",""],["","",""]]);
+  const splitMulti=mat=>mat.map(r=>r.map(c=>c.split(/[,;\\n]+/).map(s=>s.trim()).filter(Boolean).join("\\n")));
+  const handlePaste=e=>{
+    const txt=e.clipboardData.getData("text/plain");
+    const grid=parseMatrixFromGrid(txt);
+    setMatrix(grid?splitMulti(grid):splitMulti(parseMatrixFromList(txt)));
+    e.preventDefault();
+  };
+  const bg=(r,c)=>{const s=(3-r)+(c+1);return s>=6?"bg-green-200":s>=4?"bg-yellow-200":"bg-red-200";}
+  const rows=["High","Medium","Low"], cols=["Low","Medium","High"];
+  return (
+    <div className="p-4 max-w-2xl mx-auto">
+      <h1 className="text-xl font-bold mb-2">9-Box Matrix</h1>
+      <p className="text-sm mb-4">Collez la grille Excel ou “Benefit ⇥ Feas ⇥ Titre”.</p>
+      <textarea onPaste={handlePaste} placeholder="Coller ici…" className="w-full h-28 p-2 border rounded mb-6"/>
+      <div className="grid grid-cols-4 gap-px text-sm">
+        <div></div>
+        {cols.map(c=><div key={c} className="text-center font-semibold">{c}</div>)}
+        {rows.map((r,rIdx)=><React.Fragment key={r}>
+          <div className="flex items-center justify-center font-semibold">{r}</div>
+          {cols.map((_,cIdx)=><div key={cIdx} className={`${bg(rIdx,cIdx)} min-h-[70px] whitespace-pre-wrap p-2 border`}>{matrix[rIdx][cIdx]}</div>)}
+        </React.Fragment>)}
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<NineBoxMatrix/>);
+
+  </script>
+</body>
+</html>
